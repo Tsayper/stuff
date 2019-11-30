@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace UdpServer
 {
@@ -14,19 +12,17 @@ namespace UdpServer
         {
             int port = 50001;
             var serv = new UdpServer(port, 
+                //handler function takes byte[] returns byte[]
                 x => Encoding.Default.GetBytes("hello ").Concat(x).ToArray());
 
-            while (Console.ReadKey().Key != ConsoleKey.Escape)
+            //emulate requests
+            do
             {
-                var c = new UdpClient();
-                var ep = new IPEndPoint(IPAddress.Loopback, port);
-                c.Connect(ep);
-                var x = Encoding.Default.GetBytes("mike");
-                c.Send(x, x.Length);
-                var answer = c.Receive(ref ep);
-                Console.WriteLine(Encoding.Default.GetString(answer));
-                c.Close();
+                var data = Encoding.Default.GetBytes("mike");
+                var answ = UdpServer.Call(data, IPAddress.Loopback, port);
+                Console.WriteLine(Encoding.Default.GetString(answ));    //hello mike
             }
+            while (Console.ReadKey().Key != ConsoleKey.Escape);
         }
     }
 
@@ -35,9 +31,7 @@ namespace UdpServer
         public UdpServer(int port, Func<byte[], byte[]> handle, int buffSz = 1024)
         {
             var serv = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            serv.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, true);
             serv.Bind(new IPEndPoint(IPAddress.Loopback, port));
-            serv.SendTimeout = 100;
             void Receive()
             {
                 var ep = (EndPoint)(new IPEndPoint(IPAddress.Any, port));
@@ -52,6 +46,16 @@ namespace UdpServer
                     }, null);
             }
             Receive();
+        }
+        public static byte[] Call(byte[] data, IPAddress addr, int port)
+        {
+            var clnt = new UdpClient();
+            var endp = new IPEndPoint(addr, port);
+            clnt.Connect(endp);
+            clnt.Send(data, data.Length);
+            var answ = clnt.Receive(ref endp);
+            clnt.Close();
+            return answ;
         }
     }
 }
