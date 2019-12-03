@@ -26,22 +26,36 @@ namespace UdpServer
         }
     }
 
-    public class UdpServer
+    class UdpServer : IDisposable
     {
-        public UdpServer(int port, Func<byte[], byte[]> handle, int buffSz = 1024)
+        readonly Socket serv;
+        public event Action<byte[]> OnReceive;
+        public event Action<Exception> OnError;
+        public UdpServer(int port, Func<byte[], byte[]> handle, int bufferSize = 1024)
         {
-            var serv = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            serv = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             serv.Bind(new IPEndPoint(IPAddress.Loopback, port));
             void Receive()
             {
-                var ep = (EndPoint)(new IPEndPoint(IPAddress.Any, port));
-                var buff = new byte[buffSz];
-                serv.BeginReceiveFrom(buff, 0, buff.Length, SocketFlags.None, ref ep,
+                var endp = (EndPoint)(new IPEndPoint(IPAddress.Any, port));
+                var buff = new byte[bufferSize];
+                               
+                serv.BeginReceiveFrom(buff, 0, buff.Length, SocketFlags.None, ref endp,
                     ar =>
                     {
-                        int rcvd = serv.EndReceiveFrom(ar, ref ep);
-                        var answ = handle(buff.Take(rcvd).ToArray());
-                        serv.BeginSendTo(answ, 0, answ.Length, SocketFlags.None, ep, null, null);
+                        try
+                        {
+                            int rcvd = serv.EndReceiveFrom(ar, ref endp);
+                            var reqv = buff.Take(rcvd).ToArray();
+                            var resp = handle(reqv);
+                            serv.BeginSendTo(resp, 0, resp.Length, SocketFlags.None, endp, null, null);
+                            OnReceive?.Invoke(reqv);
+                        }
+                        catch (Exception e)
+                        {
+                            OnError?.Invoke(e);
+                            if (e is ObjectDisposedException) return;
+                        }
                         Receive();
                     }, null);
             }
@@ -56,6 +70,10 @@ namespace UdpServer
             var answ = clnt.Receive(ref endp);
             clnt.Close();
             return answ;
+        }
+        public void Dispose()
+        {
+            serv.Dispose();
         }
     }
 }
